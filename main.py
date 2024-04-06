@@ -10,11 +10,12 @@ from matplotlib import rc
 from pylab import rcParams
 from sklearn.model_selection import train_test_split
 from torch import nn, optim
+from tqdm.auto import tqdm
 
 from lib.arff2pandas import arff2pandas as a2p
 from src.data.make_dataset import create_dataset
 from src.model.model import Decoder, Encoder
-from src.model.predict_model import predict
+from src.model.predict_model import predict, predict_new
 from src.visualization.visualize import plot_prediction
 
 CLASS_NORMAL = 1
@@ -50,7 +51,10 @@ with open("data/ECG5000_TEST.arff") as f:
 
 df = pd.concat([train, test]).sample(frac=1.0)
 
-input_df = df[df.target == str(CLASS_NORMAL)].drop(labels='target', axis=1)
+# input_df = df[df.target == str(CLASS_SP)].drop(labels='target', axis=1)
+y_true = df['target']
+
+input_df = df.drop(labels='target', axis=1)
 input_dataset, seq_len, n_features = create_dataset(input_df)
 
 normal_model = RecurrentAutoencoder(seq_len, n_features, embedding_dim=120).to(device)
@@ -63,6 +67,67 @@ r_on_t_model = torch.load(R_ON_T_MODEL_PATH, map_location=torch.device("cpu"))
 pvc_model = torch.load(PVC_MODEL_PATH, map_location=torch.device("cpu"))
 sp_model = torch.load(SP_MODEL_PATH, map_location=torch.device("cpu"))
 
+
+
+
+def accuracy_fn(y_true, y_pred):
+    correct = torch.eq(y_true, y_pred).sum().item()
+    acc = (correct / len(y_pred)) * 100
+    return acc
+
+
+def predn(input_dataset):
+    with torch.no_grad():
+        
+        y_pred=[]
+        for seq_true in tqdm(input_dataset):
+            
+            loss = []
+    
+            _, pred_losses_normal = predict_new(normal_model, [seq_true])
+            _, pred_losses_rt = predict_new(r_on_t_model, [seq_true])
+            _, pred_losses_pvc = predict_new(pvc_model, [seq_true])
+            _, pred_losses_sp = predict_new(sp_model, [seq_true])
+
+            loss_normal = torch.mean(torch.tensor(pred_losses_normal)).item()
+            loss_rt = torch.mean(torch.tensor(pred_losses_rt)).item()
+            loss_pvc = torch.mean(torch.tensor(pred_losses_pvc)).item()
+            loss_sp = torch.mean(torch.tensor(pred_losses_sp)).item()
+                
+            loss.append(loss_normal)
+            loss.append(loss_rt)
+            loss.append(loss_pvc)
+            loss.append(loss_sp)
+            
+            min_index = loss.index(min(loss))
+            
+            if min_index == 0:
+                y_pred.append(CLASS_NORMAL)
+            elif min_index == 1:
+                y_pred.append(CLASS_R_ON_T)
+            elif min_index == 2:
+                y_pred.append(CLASS_PVC)
+            else:
+                y_pred.append(CLASS_SP)
+    return y_pred
+
+
+normal_model = normal_model.eval()
+r_on_t_model = r_on_t_model.eval()
+pvc_model = pvc_model.eval()
+sp_model = sp_model.eval()
+
+y_pred = predn(input_dataset)
+y_true = y_true.values
+y_true = [int(element) for element in y_true]
+
+acc = accuracy_fn(torch.tensor(y_true), torch.tensor(y_pred))
+print(f"Accuracy: {acc}%")
+
+
+
+
+
 # Visualization
 # fig, axs = plt.subplots(nrows=4, ncols=6, sharey=True, sharex=True, figsize=(22, 8))
 # for i, data in enumerate(input_dataset[:6]):
@@ -72,20 +137,19 @@ sp_model = torch.load(SP_MODEL_PATH, map_location=torch.device("cpu"))
 #     plot_prediction(data, sp_model, title="SP", ax=axs[3, i])
 # plt.show()
 
-_, pred_losses_normal = predict(normal_model, input_dataset[:120])
-_, pred_losses_rt = predict(r_on_t_model, input_dataset[:120])
-_, pred_losses_pvc = predict(pvc_model, input_dataset[:120])
-_, pred_losses_sp = predict(sp_model, input_dataset[:120])
 
-loss_normal = torch.mean(torch.tensor(pred_losses_normal)).item()
-loss_rt = torch.mean(torch.tensor(pred_losses_rt)).item()
-loss_pvc = torch.mean(torch.tensor(pred_losses_pvc)).item()
-loss_sp = torch.mean(torch.tensor(pred_losses_sp)).item()
+# Loss comparison
+# _, pred_losses_normal = predict(normal_model, input_dataset[:300])
+# _, pred_losses_rt = predict(r_on_t_model, input_dataset[:300])
+# _, pred_losses_pvc = predict(pvc_model, input_dataset[:300])
+# _, pred_losses_sp = predict(sp_model, input_dataset[:300])
 
-print(f"Normal: {loss_normal}")
-print(f"R on T: {loss_rt}")
-print(f"PVC: {loss_pvc}")
-print(f"SP: {loss_sp}")
+# loss_normal = torch.mean(torch.tensor(pred_losses_normal)).item()
+# loss_rt = torch.mean(torch.tensor(pred_losses_rt)).item()
+# loss_pvc = torch.mean(torch.tensor(pred_losses_pvc)).item()
+# loss_sp = torch.mean(torch.tensor(pred_losses_sp)).item()
 
-
-
+# print(f"Normal: {loss_normal}")
+# print(f"R on T: {loss_rt}")
+# print(f"PVC: {loss_pvc}")
+# print(f"SP: {loss_sp}")
