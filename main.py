@@ -7,16 +7,20 @@ import seaborn as sns
 import torch
 import torch.nn.functional as F
 from matplotlib import rc
+from mlxtend.plotting import plot_confusion_matrix
 from pylab import rcParams
 from sklearn.model_selection import train_test_split
 from torch import nn, optim
+from torchmetrics import ConfusionMatrix
 from tqdm.auto import tqdm
-
+from sklearn.metrics import confusion_matrix
 from lib.arff2pandas import arff2pandas as a2p
 from src.data.make_dataset import create_dataset
 from src.model.model import Decoder, Encoder
 from src.model.predict_model import predict, predict_new
 from src.visualization.visualize import plot_prediction
+
+classes = ['Normal', 'R on T', 'PVC', 'SP']
 
 CLASS_NORMAL = 1
 CLASS_R_ON_T = 2
@@ -52,7 +56,7 @@ with open("data/ECG5000_TEST.arff") as f:
 df = pd.concat([train, test]).sample(frac=1.0)
 
 # input_df = df[df.target == str(CLASS_SP)].drop(labels='target', axis=1)
-y_true = df['target']
+y_true = df[df['target'] != '5']['target']
 
 input_df = df.drop(labels='target', axis=1)
 input_dataset, seq_len, n_features = create_dataset(input_df)
@@ -70,6 +74,11 @@ sp_model = torch.load(SP_MODEL_PATH, map_location=torch.device("cpu"))
 
 
 
+
+
+
+
+# accuracy calculation
 def accuracy_fn(y_true, y_pred):
     correct = torch.eq(y_true, y_pred).sum().item()
     acc = (correct / len(y_pred)) * 100
@@ -126,6 +135,23 @@ print(f"Accuracy: {acc}%")
 
 
 
+# confusion matrix
+# y_pred = (torch.tensor(y_pred))
+# y_true = (torch.tensor(y_true))
+
+# y_true = y_true.numpy()
+# y_pred = y_pred.numpy()
+
+# cm = confusion_matrix(y_true, y_pred)
+
+# fig, ax = plot_confusion_matrix(
+#     conf_mat=cm, 
+#     class_names=classes,
+#     figsize=(5,5))
+# plt.show()
+
+
+
 
 
 # Visualization
@@ -136,7 +162,6 @@ print(f"Accuracy: {acc}%")
 #     plot_prediction(data, pvc_model, title="PVC", ax=axs[2, i])
 #     plot_prediction(data, sp_model, title="SP", ax=axs[3, i])
 # plt.show()
-
 
 # Loss comparison
 # _, pred_losses_normal = predict(normal_model, input_dataset[:300])
