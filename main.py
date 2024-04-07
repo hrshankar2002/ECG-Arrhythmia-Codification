@@ -35,7 +35,6 @@ SP_MODEL_PATH = "models/sp_model.pth"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
 class RecurrentAutoencoder(nn.Module):
     def __init__(self, seq_len, n_features, embedding_dim=64):
         super(RecurrentAutoencoder, self).__init__()
@@ -70,12 +69,6 @@ normal_model = torch.load(NORMAL_MODEL_PATH, map_location=torch.device("cpu"))
 r_on_t_model = torch.load(R_ON_T_MODEL_PATH, map_location=torch.device("cpu"))
 pvc_model = torch.load(PVC_MODEL_PATH, map_location=torch.device("cpu"))
 sp_model = torch.load(SP_MODEL_PATH, map_location=torch.device("cpu"))
-
-
-
-
-
-
 
 
 # accuracy calculation
@@ -134,7 +127,6 @@ acc = accuracy_fn(torch.tensor(y_true), torch.tensor(y_pred))
 print(f"Accuracy: {acc}%")
 
 
-
 # confusion matrix
 # y_pred = (torch.tensor(y_pred))
 # y_true = (torch.tensor(y_true))
@@ -149,9 +141,6 @@ print(f"Accuracy: {acc}%")
 #     class_names=classes,
 #     figsize=(5,5))
 # plt.show()
-
-
-
 
 
 # Visualization
