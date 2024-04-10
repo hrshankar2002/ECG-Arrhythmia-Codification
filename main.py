@@ -9,29 +9,31 @@ import torch.nn.functional as F
 from matplotlib import rc
 from mlxtend.plotting import plot_confusion_matrix
 from pylab import rcParams
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from torch import nn, optim
 from torchmetrics import ConfusionMatrix
 from tqdm.auto import tqdm
-from sklearn.metrics import confusion_matrix
+
 from lib.arff2pandas import arff2pandas as a2p
 from src.data.make_dataset import create_dataset
 from src.model.model import Decoder, Encoder
 from src.model.predict_model import predict, predict_new
 from src.visualization.visualize import plot_prediction
 
-classes = ['Normal', 'R on T', 'PVC', 'SP']
+classes = ['N', 'L', 'R', 'V', 'P']
 
-CLASS_NORMAL = 1
-CLASS_R_ON_T = 2
-CLASS_PVC = 3
-CLASS_SP = 4
-# CLASS_UB = 5
+CLASS_N = 0
+CLASS_L = 1
+CLASS_R = 2
+CLASS_V = 3
+CLASS_P = 4
 
-NORMAL_MODEL_PATH = "models/normal_model.pth"
-PVC_MODEL_PATH = "models/pvc_model.pth"
-R_ON_T_MODEL_PATH = "models/r_on_t_model.pth"
-SP_MODEL_PATH = "models/sp_model.pth"
+N_MODEL_PATH = "checkpoints/chkpt_v2/n_model.pth"
+L_MODEL_PATH = "checkpoints/chkpt_v2/l_model.pth"
+R_MODEL_PATH = "checkpoints/chkpt_v2/r_model.pth"
+V_MODEL_PATH = "checkpoints/chkpt_v2/v_model.pth"
+P_MODEL_PATH = "checkpoints/chkpt_v2/p_model.pth"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -46,29 +48,23 @@ class RecurrentAutoencoder(nn.Module):
         x = self.decoder(x)
         return x
 
-
-with open("data/ECG5000_TRAIN.arff") as f:
-    train = a2p.load(f)
-with open("data/ECG5000_TEST.arff") as f:
-    test = a2p.load(f)
-
-df = pd.concat([train, test]).sample(frac=1.0)
-
-# input_df = df[df.target == str(CLASS_SP)].drop(labels='target', axis=1)
-y_true = df[df['target'] != '5']['target']
+df = pd.read_csv('data_revisions/revision_3/data_v3.csv')
 
 input_df = df.drop(labels='target', axis=1)
 input_dataset, seq_len, n_features = create_dataset(input_df)
 
-normal_model = RecurrentAutoencoder(seq_len, n_features, embedding_dim=120).to(device)
-r_on_t_model = RecurrentAutoencoder(seq_len, n_features, embedding_dim=120).to(device)
-pvc_model = RecurrentAutoencoder(seq_len, n_features, embedding_dim=120).to(device)
-sp_model = RecurrentAutoencoder(seq_len, n_features, embedding_dim=120).to(device)
+n_model = RecurrentAutoencoder(seq_len, n_features, embedding_dim=120).to(device)
+l_model = RecurrentAutoencoder(seq_len, n_features, embedding_dim=120).to(device)
+r_model = RecurrentAutoencoder(seq_len, n_features, embedding_dim=120).to(device)
+v_model = RecurrentAutoencoder(seq_len, n_features, embedding_dim=120).to(device)
+p_model = RecurrentAutoencoder(seq_len, n_features, embedding_dim=120).to(device)
 
-normal_model = torch.load(NORMAL_MODEL_PATH, map_location=torch.device("cpu"))
-r_on_t_model = torch.load(R_ON_T_MODEL_PATH, map_location=torch.device("cpu"))
-pvc_model = torch.load(PVC_MODEL_PATH, map_location=torch.device("cpu"))
-sp_model = torch.load(SP_MODEL_PATH, map_location=torch.device("cpu"))
+n_model = torch.load(N_MODEL_PATH, map_location=torch.device("cpu"))
+l_model = torch.load(L_MODEL_PATH, map_location=torch.device("cpu"))
+r_model = torch.load(R_MODEL_PATH, map_location=torch.device("cpu"))
+v_model = torch.load(V_MODEL_PATH, map_location=torch.device("cpu"))
+p_model = torch.load(P_MODEL_PATH, map_location=torch.device("cpu"))
+
 
 
 # accuracy calculation
@@ -76,7 +72,6 @@ def accuracy_fn(y_true, y_pred):
     correct = torch.eq(y_true, y_pred).sum().item()
     acc = (correct / len(y_pred)) * 100
     return acc
-
 
 def predn(input_dataset):
     with torch.no_grad():
@@ -86,45 +81,52 @@ def predn(input_dataset):
             
             loss = []
     
-            _, pred_losses_normal = predict_new(normal_model, [seq_true])
-            _, pred_losses_rt = predict_new(r_on_t_model, [seq_true])
-            _, pred_losses_pvc = predict_new(pvc_model, [seq_true])
-            _, pred_losses_sp = predict_new(sp_model, [seq_true])
+            _, pred_losses_n = predict_new(n_model, [seq_true])
+            _, pred_losses_l = predict_new(l_model, [seq_true])
+            _, pred_losses_r = predict_new(r_model, [seq_true])
+            _, pred_losses_v = predict_new(v_model, [seq_true])
+            _, pred_losses_p = predict_new(p_model, [seq_true])
 
-            loss_normal = torch.mean(torch.tensor(pred_losses_normal)).item()
-            loss_rt = torch.mean(torch.tensor(pred_losses_rt)).item()
-            loss_pvc = torch.mean(torch.tensor(pred_losses_pvc)).item()
-            loss_sp = torch.mean(torch.tensor(pred_losses_sp)).item()
+            loss_n = torch.mean(torch.tensor(pred_losses_n)).item()
+            loss_l = torch.mean(torch.tensor(pred_losses_l)).item()
+            loss_r = torch.mean(torch.tensor(pred_losses_r)).item()
+            loss_v = torch.mean(torch.tensor(pred_losses_v)).item()
+            loss_p = torch.mean(torch.tensor(pred_losses_p)).item()
                 
-            loss.append(loss_normal)
-            loss.append(loss_rt)
-            loss.append(loss_pvc)
-            loss.append(loss_sp)
+            loss.append(loss_n)
+            loss.append(loss_l)
+            loss.append(loss_r)
+            loss.append(loss_v)
+            loss.append(loss_p)
             
             min_index = loss.index(min(loss))
             
             if min_index == 0:
-                y_pred.append(CLASS_NORMAL)
+                y_pred.append(CLASS_N)
             elif min_index == 1:
-                y_pred.append(CLASS_R_ON_T)
+                y_pred.append(CLASS_L)
             elif min_index == 2:
-                y_pred.append(CLASS_PVC)
+                y_pred.append(CLASS_R)
+            elif min_index == 3:
+                y_pred.append(CLASS_V)
             else:
-                y_pred.append(CLASS_SP)
+                y_pred.append(CLASS_P)
     return y_pred
 
+n_model = n_model.eval()
+l_model = l_model.eval()
+r_model = r_model.eval()
+v_model = v_model.eval()
+p_model = p_model.eval()
 
-normal_model = normal_model.eval()
-r_on_t_model = r_on_t_model.eval()
-pvc_model = pvc_model.eval()
-sp_model = sp_model.eval()
-
+y_true = df['target']
 y_pred = predn(input_dataset)
 y_true = y_true.values
 y_true = [int(element) for element in y_true]
 
 acc = accuracy_fn(torch.tensor(y_true), torch.tensor(y_pred))
 print(f"Accuracy: {acc}%")
+
 
 
 # confusion matrix
@@ -143,27 +145,34 @@ print(f"Accuracy: {acc}%")
 # plt.show()
 
 
+
 # Visualization
-# fig, axs = plt.subplots(nrows=4, ncols=6, sharey=True, sharex=True, figsize=(22, 8))
+# fig, axs = plt.subplots(nrows=5, ncols=6, sharey=True, sharex=True, figsize=(22, 8))
 # for i, data in enumerate(input_dataset[:6]):
-#     plot_prediction(data, normal_model, title="Normal", ax=axs[0, i])
-#     plot_prediction(data, r_on_t_model, title="R on T", ax=axs[1, i])
-#     plot_prediction(data, pvc_model, title="PVC", ax=axs[2, i])
-#     plot_prediction(data, sp_model, title="SP", ax=axs[3, i])
+#     plot_prediction(data, n_model, title="Normal Beat", ax=axs[0, i])
+#     plot_prediction(data, l_model, title="Left Bundle Branch Block", ax=axs[1, i])
+#     plot_prediction(data, r_model, title="Right Bundle Branch Block", ax=axs[2, i])
+#     plot_prediction(data, v_model, title="Premature Ventricular Contraction", ax=axs[3, i])
+#     plot_prediction(data, p_model, title="Paced Beat", ax=axs[4, i])
 # plt.show()
 
+
+
 # Loss comparison
-# _, pred_losses_normal = predict(normal_model, input_dataset[:300])
-# _, pred_losses_rt = predict(r_on_t_model, input_dataset[:300])
-# _, pred_losses_pvc = predict(pvc_model, input_dataset[:300])
-# _, pred_losses_sp = predict(sp_model, input_dataset[:300])
+# _, pred_losses_n = predict(n_model, input_dataset[:300])
+# _, pred_losses_l = predict(l_model, input_dataset[:300])
+# _, pred_losses_r = predict(r_model, input_dataset[:300])
+# _, pred_losses_v = predict(v_model, input_dataset[:300])
+# _, pred_losses_p = predict(p_model, input_dataset[:300])
 
-# loss_normal = torch.mean(torch.tensor(pred_losses_normal)).item()
-# loss_rt = torch.mean(torch.tensor(pred_losses_rt)).item()
-# loss_pvc = torch.mean(torch.tensor(pred_losses_pvc)).item()
-# loss_sp = torch.mean(torch.tensor(pred_losses_sp)).item()
+# loss_n = torch.mean(torch.tensor(pred_losses_n)).item()
+# loss_l = torch.mean(torch.tensor(pred_losses_l)).item()
+# loss_r = torch.mean(torch.tensor(pred_losses_r)).item()
+# loss_v = torch.mean(torch.tensor(pred_losses_v)).item()
+# loss_p = torch.mean(torch.tensor(pred_losses_p)).item()
 
-# print(f"Normal: {loss_normal}")
-# print(f"R on T: {loss_rt}")
-# print(f"PVC: {loss_pvc}")
-# print(f"SP: {loss_sp}")
+# print(f"Normal Beat: {loss_n}")
+# print(f"Left Bundle Branch Block: {loss_l}")
+# print(f"Right Bundle Branch Block: {loss_r}")
+# print(f"Premature Ventricular Contraction: {loss_v}")
+# print(f"Paced Beat: {loss_p}")
